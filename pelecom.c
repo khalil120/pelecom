@@ -1,4 +1,4 @@
-/* Khalil Qablawi - 206758088
+/* Khalil Qablawi
 *  Advanced Unix - HW3
 *  this is the main process prestents the pelecom 
 */
