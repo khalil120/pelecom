@@ -8,11 +8,6 @@
 #include "pelecom.h"
 
 
-struct mesg_buffer { 
-    long msgType; 
-    customer *customer; 
-} message; 
-
 int main(int argc, char* argv[]){
 
     //argv[1] -> the key of the queue to recieve message
@@ -27,12 +22,14 @@ int main(int argc, char* argv[]){
     int closing_signal = 0;
     bool isOpen = true;
 
-
+    printf("recption process running now\n");
+    
 
     //message queue to read message from entry proccess
     int entryMsgID = msgget(entrykey, 0666 | IPC_CREAT);
     if(entryMsgID == -1)
         perror("recption process: msgget() faild: "); 
+
 
     //3 messages queue to send the message to its relevant service
     int newCstMsgID = msgget(newkey, 0666 | IPC_CREAT);
@@ -47,33 +44,41 @@ int main(int argc, char* argv[]){
     if(upgradeCstMsgID == -1)
         perror("recption process: msgget() faild: ");
 
+    size_t size = sizeof(customer);
+    customer cst;
     while(isOpen){
         //first get customer from the entry.
-        if(msgrcv(entryMsgID,&message,sizeof(message),0,1) == -1)
+        if(msgrcv(entryMsgID,&cst,size,0,MSG_NOERROR) < 0){
             perror("recption process: msgrcv(): ");
-        
-        if(message.customer->c_data.type != TYPE_QUIT){
-            //real customers, move the customer to its wnated services queue
-            if(message.customer->c_data.type == TYPE_NEW){
-                msgsnd(newCstMsgID,&message,sizeof(message),0);
-            }else if(message.customer->c_data.type == TYPE_REPAIR){
-                msgsnd(repairCstMsgID,&message,sizeof(message),0);
-            }else
-                msgsnd(upgradeCstMsgID,&message,sizeof(message),0);
-        }else{
-            //close message
-            if(closing_signal == 0){
-                msgsnd(newCstMsgID,&message,sizeof(message),0);
-            }else if(closing_signal == 1){
-                msgsnd(repairCstMsgID,&message,sizeof(message),0);
-            }else{
-                msgsnd(upgradeCstMsgID,&message,sizeof(message),0);
-            }
-            closing_signal++;
-            if(closing_signal == 3)
-                isOpen = false;
         }
+        printf("customer %ld arrived to the recption \n",cst.c_id);
+        if(cst.c_data.type != TYPE_QUIT){
+            //real customers, move the customer to its wnated services queue
+            if(cst.c_data.type == TYPE_NEW){
+               if(msgsnd(newCstMsgID,&cst,size,0) == -1)
+                    perror("recption process: msgsnd(): ");
+            }else if(cst.c_data.type == TYPE_REPAIR){
+                if(msgsnd(repairCstMsgID,&cst,size,0) == -1)
+                    perror("recption process: msgsnd(): ");
+            }else
+                if(msgsnd(upgradeCstMsgID,&cst,size,0) == -1)
+                    perror("recption process: msgsnd(): ");
+        }else{
+            //close message - send exit commands to the 3 service types.
+            if(msgsnd(newCstMsgID,&cst,size,0) == -1)
+                perror("recption process: msgsnd(): ");
+
+            if(msgsnd(repairCstMsgID,&cst,size,0) == -1)
+                perror("recption process: msgsnd(): ");
+ 
+            if(msgsnd(upgradeCstMsgID,&cst,size,0))
+                perror("recption process: msgsnd(): ");
+            isOpen = false;
+            break;
+        }
+        
     }
+    printf("recption closed, all customers moved to the queues\n");
     //when the store close the recption proccess close the message queue with entry process
     msgctl(entryMsgID,IPC_RMID,NULL); 
     return 0;
